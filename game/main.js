@@ -8,9 +8,12 @@ import { createCombat, WEAPONS } from './combat.js';
 import { createMissions } from './missions.js';
 import { createSave, importState, exportState } from './save.js';
 import { createEconomy } from './economy.js';
+import { createHud } from './hud.js';
+import { createRadio } from './radio.js';
+import { createScreens } from './screens.js';
 
 /**
- * Caldera Bay - Main Module with Pedestrians, Combat, and Police integration.
+ * Caldera Bay - Main Module with Pedestrians, Combat, Police, HUD, Radio, and Screens integration.
  */
 
 // --- Constants & Config ---
@@ -30,13 +33,13 @@ function mulberry32(a) {
 let rng = mulberry32(mulberrySeed);
 
 // --- Player & State ---
-let scene, camera, renderer, city, traffic, pedestrians, combat;
+let scene, camera, renderer, city, traffic, pedestrians, combat, hud, radio, screens, missions, economy;
 let player = {
   mesh: null,
   car: null,
   x: 0, z: 0, heading: 0,
   vx: 0, vz: 0, speed: 0,
-  health: 100, armour: 0, ammo: 120, cash: 4210
+  health: 100, armour: 0, ammo: 120, cash: 4210, rep: 520
 };
 
 // --- Renderer Setup ---
@@ -55,8 +58,12 @@ function init() {
   combat = createCombat(scene, player, police, pedestrians);
 
   const save = importState();
-  const missions = createMissions({ player, police, traffic });
-  const economy = createEconomy({ player, save });
+  missions = createMissions({ player, police, traffic });
+  economy = createEconomy({ player, save });
+
+  hud = createHud({ player, police, missions, economy, save });
+  radio = createRadio();
+  screens = createScreens({ player, save, economy, radio, renderer, scene });
 
   const group = new THREE.Group();
   const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));
@@ -110,9 +117,12 @@ function update(dt) {
   pedestrians.update(dt, {x: player.x, z: player.z}, police);
   police.update(dt, {x: player.x, z: player.z}, {x: player.vx, z: player.vz}, player.car, scene);
   combat.update(dt);
+  missions.update(dt);
 
   updateCamera();
-  updateHUDWiring();
+
+  if (hud) hud.update(dt, player, police, missions, economy);
+  if (radio) radio.playEngine(player.speed, 260);
 }
 
 function render() {
@@ -135,6 +145,11 @@ function updateCamera() {
 // --- Interaction Handling ---
 function handleInput() {
   document.addEventListener('keydown', (e) => {
+    if (screens && screens.isActive()) {
+      if (e.key === 'Escape') screens.hide();
+      return;
+    }
+
     if (e.key === 'e' || e.key === 'E') {
       if (player.car) {
         player.car = null;
@@ -147,39 +162,27 @@ function handleInput() {
             player.car = c;
             traffic.markStolen(c.mesh);
             police.reportCrime('carjack', {x: player.x, z: player.z});
+            if (radio) radio.playBlip();
             break;
           }
         }
       }
     } else if (e.key === 'f' || e.key === 'F') {
-      // Fire weapon / attack
       combat.fire({ x: player.x, z: player.z }, player.heading, [], traffic.getCars ? traffic.getCars() : []);
     } else if (['1', '2', '3', '4'].includes(e.key)) {
       const slot = parseInt(e.key) - 1;
       combat.setActiveSlot(slot);
+      if (radio) radio.playBlip();
+    } else if (e.key === 'q' || e.key === 'Q') {
+      if (radio) radio.nextStation();
+    } else if (e.key === 'b' || e.key === 'B') {
+      if (screens) screens.showJobBoard();
+    } else if (e.key === 'g' || e.key === 'G') {
+      if (screens) screens.showGarage();
+    } else if (e.key === 'Escape') {
+      if (screens) screens.showStart();
     }
   });
-}
-
-// --- HUD Wiring ---
-function updateHUDWiring() {
-  const mission = document.getElementById('mission');
-  const dispatch = document.getElementById('dispatch');
-  const status = document.getElementById('status');
-  const prompt = document.getElementById('prompt');
-
-  if (mission) mission.innerText = `JOB: NONE`;
-  if (dispatch) dispatch.innerText = `DISPATCH: HEAT ${police.heatLevel()} · ${police.units.length} UNITS`;
-  if (status) {
-    status.innerHTML = `
-      <div style="color: red;">HEAT: ${police.heatLevel()}</div>
-      <div>CASH: $${player.cash}</div>
-      <div>SPD: ${Math.round(player.speed * 3.6)} KM/H</div>
-      <div>HP: ${Math.round(player.health)}</div>
-      <div>ARM: ${Math.round(player.armour)}</div>
-    `;
-  }
-  if (prompt) prompt.innerText = player.car ? "Press E to Exit" : "Press E to Carjack | F to Fire | 1-4 to Switch Weapon";
 }
 
 // --- Photo Mode ---

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Caldera Bay</title>
+<title>Caldera Bay — Open World Crime Game</title>
 <script type="importmap">
 {
   "imports": {
@@ -12,20 +12,42 @@
 }
 </script>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; color: white; font-family: monospace; }
-  .panel { position: absolute; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0B0A10;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #F5E3C3;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .cb-panel {
+    position: absolute;
+    background: rgba(20, 20, 28, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hud">
-  <div id="mission" class="panel" style="top: 16px; left: 16px;"></div>
-  <div id="dispatch" class="panel" style="top: 190px; left: 16px;"></div>
-  <div id="status" class="panel" style="top: 16px; right: 16px; text-align: right;"></div>
-  <div id="prompt" class="panel" style="bottom: 50px; left: 50%; transform: translateX(-50%); font-size: 24px;"></div>
-</div>
+<div id="hud"></div>
+<div id="screens"></div>
 <script type="module" src="./main.js"></script>
 </body>
 </html>

@@ -5,6 +5,9 @@ import { createTraffic } from './traffic.js';
 import { police } from './police.js';
 import { createPedestrians } from './pedestrians.js';
 import { createCombat, WEAPONS } from './combat.js';
+import { createMissions } from './missions.js';
+import { createSave, importState, exportState } from './save.js';
+import { createEconomy } from './economy.js';
 
 /**
  * Caldera Bay - Main Module with Pedestrians, Combat, and Police integration.
@@ -50,6 +53,10 @@ function init() {
   traffic = createTraffic(scene);
   pedestrians = createPedestrians(scene, rng);
   combat = createCombat(scene, player, police, pedestrians);
+
+  const save = importState();
+  const missions = createMissions({ player, police, traffic });
+  const economy = createEconomy({ player, save });
 
   const group = new THREE.Group();
   const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));

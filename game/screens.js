@@ -1,6 +1,7 @@
 import * as THREE from './three.module.min.js';
 import { JOBS } from './missions.js';
 import { createCarMesh, getVehicleSpec } from './vehicles.js';
+import { canonicalSave } from './save.js';
 
 /**
  * Caldera Bay - Screens Module (~300 lines)
@@ -18,6 +19,10 @@ import { createCarMesh, getVehicleSpec } from './vehicles.js';
 
 export function createScreens(ctx) {
   const { player, save, economy, radio, renderer, scene } = ctx || {};
+
+  const params = new URLSearchParams(window.location.search);
+  const isShotStart = params.get('shot') === 'start';
+  const displaySave = isShotStart ? canonicalSave() : save;
 
   let overlayEl = document.getElementById('cb-screens');
   if (!overlayEl) {
@@ -52,7 +57,7 @@ export function createScreens(ctx) {
           <p style="font-size:18px;color:#FF7E5F;margin:0 0 30px 0;font-weight:600;">8 JOBS · 5 DISTRICTS · ONE CITY TO TAKE</p>
           <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:30px;">
             <button id="cb-btn-continue" style="padding:16px 24px;font-size:20px;font-weight:bold;background:#FF7E5F;color:#1C1A24;border:none;border-radius:6px;cursor:pointer;text-align:left;">
-              CONTINUE — M${save ? save.missionIndex + 1 : 1}/8 · REP ${save ? save.rep : 520} · $${save ? save.cash : 4210}
+              CONTINUE — M${displaySave.missionIndex + 1}/8 · REP ${displaySave.rep} · $${displaySave.cash.toLocaleString()}
             </button>
             <button id="cb-btn-new" style="padding:14px 24px;font-size:16px;font-weight:bold;background:rgba(255,255,255,0.1);color:#F5E3C3;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;text-align:left;">
               NEW GAME
@@ -72,11 +77,11 @@ export function createScreens(ctx) {
         <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:24px;">
           <h3 style="margin-top:0;color:#F2B441;">YOUR RISE</h3>
           <div style="font-size:14px;line-height:1.6;">
-            <div>NOBODY → RUNNER → WHEELMAN → <b>FIXER (520 REP)</b> → BROKER → LEYENDA</div>
+            <div>NOBODY → RUNNER → WHEELMAN → <b>FIXER (${displaySave.rep} REP)</b> → BROKER → LEYENDA</div>
             <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0;">
-            <div><b>JOBS DONE:</b> 6 / 8 Completed</div>
-            <div><b>CITY TAKEOVER:</b> 3 / 5 Districts</div>
-            <div><b>CARS STOLEN:</b> 41 · <b>TOP SPEED:</b> 247 KM/H</div>
+            <div><b>JOBS DONE:</b> ${displaySave.missionIndex} / 8 Completed</div>
+            <div><b>CITY TAKEOVER:</b> ${Object.values(displaySave.takeover).filter(v => v > 0).length} / 5 Districts</div>
+            <div><b>CARS STOLEN:</b> ${displaySave.stats.carsStolen} · <b>TOP SPEED:</b> ${displaySave.stats.topSpeed} KM/H</div>
           </div>
         </div>
       </div>
@@ -106,7 +111,7 @@ export function createScreens(ctx) {
                 <div style="font-size:13px;color:#A0A0B0;">Reward: $${300 + i * 300} · 50 REP</div>
               </div>
               <button class="cb-start-job" data-id="${i}" style="padding:10px 20px;background:#1F6E73;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                ${i <= (save ? save.missionIndex : 0) ? 'AVAILABLE' : 'LOCKED'}
+                ${i <= (displaySave ? displaySave.missionIndex : 0) ? 'AVAILABLE' : 'LOCKED'}
               </button>
             </div>
           `).join('')}

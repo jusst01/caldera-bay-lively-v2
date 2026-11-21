@@ -148,26 +148,67 @@ export function createCity(scene) {
 
   // --- Population ---
   function populateCity() {
-    let cShop=0, cBlock=0, cWh=0, cVilla=0;
+    let cShop = 0, cBlock = 0, cWh = 0, cVilla = 0;
     const colors = [0xBC8F8F, 0xD2B48C, 0x8B7E66, 0xF5DEB3];
-    for (let i = 0; i < 774; i++) {
-        const x = rng() * 1000 - 500;
-        const z = rng() * 1000 - 500;
-        const d = districtAt(x, z);
-        let w = 12 + rng()*18, h, depth = 12 + rng()*18;
-        let mesh, idx, colIdx;
+    const blockBuildings = new Map();
 
-        if (d === 'muelle') { mesh = meshShop; idx = cShop++; h = 8 + rng()*12; colIdx = 0; }
-        else if (d === 'paseo') { mesh = meshBlock; idx = cBlock++; h = 25 + rng()*35; colIdx = 1; }
-        else if (d === 'verde') { mesh = meshWarehouse; idx = cWh++; h = 10 + rng()*12; colIdx = 2; }
-        else { mesh = meshVilla; idx = cVilla++; h = 8 + rng()*10; colIdx = 3; }
+    for (let bx = -8; bx <= 7; bx++) {
+      for (let bz = -8; bz <= 7; bz++) {
+        const key = `${bx},${bz}`;
+        blockBuildings.set(key, []);
+        for (let i = 0; i < 4; i++) {
+          for (let attempt = 0; attempt < 8; attempt++) {
+            const w = 12 + rng() * 18;
+            const d = 12 + rng() * 18;
+            const minX = bx * 64 + 8 + w / 2;
+            const maxX = bx * 64 + 56 - w / 2;
+            const minZ = bz * 64 + 8 + d / 2;
+            const maxZ = bz * 64 + 56 - d / 2;
+            if (minX > maxX || minZ > maxZ) continue;
 
-        const matrix = new THREE.Matrix4();
-        const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (rng() > 0.5 ? 0 : Math.PI / 2), 0));
-        matrix.compose(new THREE.Vector3(x, h/2, z), rot, new THREE.Vector3(w, h, depth));
-        mesh.setMatrixAt(idx, matrix);
-        const color = new THREE.Color(colors[colIdx]).offsetHSL(0, 0, (rng()-0.5)*0.1);
-        mesh.setColorAt(idx, color);
+            const x = minX + rng() * (maxX - minX);
+            const z = minZ + rng() * (maxZ - minZ);
+
+            // Spawn clearing (radius 30m around (0,0))
+            if (Math.sqrt(x * x + z * z) < 40) continue;
+
+            let overlap = false;
+            for (const b of blockBuildings.get(key)) {
+              if (Math.abs(x - b.x) < (w + b.w) / 2 && Math.abs(z - b.z) < (d + b.d) / 2) {
+                overlap = true;
+                break;
+              }
+            }
+            if (overlap) continue;
+
+            // Place building
+            const dType = districtAt(x, z);
+            let mesh, idx, colIdx, h;
+            if (dType === 'muelle') {
+              if (cShop >= 200) continue;
+              mesh = meshShop; idx = cShop++; h = 8 + rng() * 12; colIdx = 0;
+            } else if (dType === 'paseo') {
+              if (cBlock >= 200) continue;
+              mesh = meshBlock; idx = cBlock++; h = 25 + rng() * 35; colIdx = 1;
+            } else if (dType === 'verde') {
+              if (cWh >= 200) continue;
+              mesh = meshWarehouse; idx = cWh++; h = 10 + rng() * 12; colIdx = 2;
+            } else {
+              if (cVilla >= 174) continue;
+              mesh = meshVilla; idx = cVilla++; h = 8 + rng() * 10; colIdx = 3;
+            }
+
+            blockBuildings.get(key).push({ x, z, w, d });
+            const matrix = new THREE.Matrix4();
+            const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (rng() > 0.5 ? 0 : Math.PI / 2), 0));
+            matrix.compose(new THREE.Vector3(x, h / 2, z), rot, new THREE.Vector3(w, h, d));
+            mesh.setMatrixAt(idx, matrix);
+            const color = new THREE.Color(colors[colIdx]).offsetHSL(0, 0, (rng() - 0.5) * 0.1);
+            mesh.setColorAt(idx, color);
+            break;
+          }
+        }
+      }
     }
   }
 

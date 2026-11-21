@@ -187,14 +187,144 @@ function handleInput() {
 
 // --- Photo Mode ---
 window.__photo = {
-  load(spec) { rng = mulberry32(spec.seed); },
+  load(spec) {
+    if (spec.seed !== undefined) rng = mulberry32(spec.seed);
+    if (spec.force) {
+      if (spec.force.heat !== undefined) {
+        police.heat = spec.force.heat;
+        police.points = spec.force.heat === 5 ? 170 : spec.force.heat === 4 ? 110 : spec.force.heat === 3 ? 60 : spec.force.heat === 2 ? 25 : 10;
+      }
+      if (spec.force.mission !== undefined) {
+        missions.startJob(spec.force.mission);
+        if (spec.force.stage !== undefined) missions.setStage(spec.force.stage);
+      }
+      if (spec.force.onFoot !== undefined) {
+        if (spec.force.onFoot) {
+          player.car = null;
+        }
+      }
+      if (spec.force.pedsCount !== undefined && pedestrians && pedestrians.debugSetPedsNear) {
+        pedestrians.debugSetPedsNear(player.x, player.z, spec.force.pedsCount);
+      }
+      if (spec.force.policeCount !== undefined && window.__calderaTest) {
+        window.__calderaTest.stagePoliceAbeam(spec.force.policeCount);
+      }
+      if (spec.force.carSpeed !== undefined) {
+        if (!player.car) {
+          const cars = traffic.getCars ? traffic.getCars() : [];
+          if (cars.length > 0) player.car = cars[0];
+        }
+        if (player.car) player.car.speed = spec.force.carSpeed;
+      }
+    }
+  },
   capture() { return renderer.domElement.toDataURL(); },
-  state() { return { player: { ...player } }; },
+  state() {
+    return {
+      player: {
+        x: player.x,
+        z: player.z,
+        speed: player.speed,
+        cash: player.cash,
+        rep: player.rep,
+        onFoot: !player.car
+      },
+      heat: police.heat,
+      mission: missions.currentObjective()
+    };
+  },
   renderToDataURL() { return renderer.domElement.toDataURL(); }
 };
 
 window.__calderaTest = {
-  state: () => ({ player }),
+  state: () => ({
+    player: {
+      x: player.x,
+      z: player.z,
+      speed: player.speed,
+      cash: player.cash,
+      rep: player.rep,
+      onFoot: !player.car,
+      car: player.car ? { x: player.car.x, z: player.car.z, speed: player.car.speed } : null
+    },
+    police: { heat: police.heat, points: police.points, units: police.units.length },
+    mission: missions.currentObjective()
+  }),
+  save(saveData) {
+    if (saveData.cash !== undefined) player.cash = saveData.cash;
+    if (saveData.rep !== undefined) player.rep = saveData.rep;
+    if (saveData.heat !== undefined) {
+      police.heat = saveData.heat;
+      police.points = saveData.heat === 5 ? 170 : saveData.heat === 4 ? 110 : saveData.heat === 3 ? 60 : saveData.heat === 2 ? 25 : 10;
+    }
+    if (saveData.missionIndex !== undefined) {
+      missions.startJob(saveData.missionIndex);
+      if (saveData.missionStage !== undefined) missions.setStage(saveData.missionStage);
+    }
+  },
+  projectUnits() {
+    camera.updateMatrixWorld();
+    const results = [];
+    const w = renderer.domElement.width || window.innerWidth;
+    const h = renderer.domElement.height || window.innerHeight;
+    for (const u of police.units) {
+      if (!u.mesh) continue;
+      const v = new THREE.Vector3();
+      u.mesh.getWorldPosition(v);
+      v.project(camera);
+      const sx = (v.x * 0.5 + 0.5) * w;
+      const sy = (-(v.y * 0.5) + 0.5) * h;
+      const inFrustum = v.z >= -1 && v.z <= 1 && sx >= 0 && sx <= w && sy >= 0 && sy <= h;
+      results.push({
+        id: u.id,
+        name: u.name,
+        x: Math.round((sx / w) * 100),
+        y: Math.round((sy / h) * 100),
+        inFrustum
+      });
+    }
+    return results;
+  },
+  projectPeds() {
+    camera.updateMatrixWorld();
+    const results = [];
+    const w = renderer.domElement.width || window.innerWidth;
+    const h = renderer.domElement.height || window.innerHeight;
+    const peds = pedestrians && pedestrians.getPeds ? pedestrians.getPeds() : [];
+    for (const p of peds) {
+      const v = new THREE.Vector3(p.x, 0, p.z);
+      v.project(camera);
+      const sx = (v.x * 0.5 + 0.5) * w;
+      const sy = (-(v.y * 0.5) + 0.5) * h;
+      const inFrustum = v.z >= -1 && v.z <= 1 && sx >= 0 && sx <= w && sy >= 0 && sy <= h;
+      results.push({
+        x: Math.round((sx / w) * 100),
+        y: Math.round((sy / h) * 100),
+        inFrustum
+      });
+    }
+    return results;
+  },
+  stagePoliceAbeam(count = 3) {
+    police.units = [];
+    for (let i = 0; i < count; i++) {
+      const offsetZ = 12 + i * 5;
+      const offsetX = (i - 1) * 3;
+      const x = player.x + Math.sin(player.heading) * offsetZ + Math.cos(player.heading) * offsetX;
+      const z = player.z + Math.cos(player.heading) * offsetZ - Math.sin(player.heading) * offsetX;
+      const mesh = createCarMesh('fenix', 'full');
+      mesh.position.set(x, 0, z);
+      scene.add(mesh);
+      police.units.push({
+        id: 'P' + i,
+        name: ['PERALTA', 'GARCÍA', 'ROJAS', 'SILVA'][i],
+        mesh,
+        x, z,
+        distance: Math.round(offsetZ),
+        tactic: 'PURSUIT'
+      });
+    }
+  },
   hash: () => 'hash_val',
   driveTour: () => {},
   onFootLoop: () => {}

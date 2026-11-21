@@ -259,6 +259,18 @@ export function createPedestrians(scene, rng = Math.random) {
       }
     },
 
+    debugSetPedsNear(px, pz, count = 5) {
+      for (let i = 0; i < Math.min(count, peds.length); i++) {
+        const p = peds[i];
+        const angle = ((i / count) - 0.5) * Math.PI * 0.8;
+        const dist = 6 + (i % 3) * 3;
+        p.x = px + Math.sin(angle) * dist;
+        p.z = pz + Math.cos(angle) * dist;
+        p.mesh.position.set(p.x, 0, p.z);
+        p.state = 'calm';
+      }
+    },
+
     getBrawlEvent() {
       return brawlEvent;
     }

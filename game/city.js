@@ -67,6 +67,12 @@ export function setFinaleDusk(on) {
 // --- World Builder ---
 
 export function createCity(scene) {
+  // Sky dome
+  const skyGeom = new THREE.SphereGeometry(1200, 32, 15);
+  const skyMat = new THREE.MeshBasicMaterial({ color: 0x1A2536, side: THREE.BackSide });
+  const sky = new THREE.Mesh(skyGeom, skyMat);
+  scene.add(sky);
+
   // Ground
   const groundGeom = new THREE.PlaneGeometry(1500, 1500);
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x7A5F42 });
@@ -74,7 +80,7 @@ export function createCity(scene) {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // Volacno
+  // Volcano
   const coneGeom = new THREE.ConeGeometry(220, 220, 12);
   const coneMat = new THREE.MeshBasicMaterial({ color: 0x37303E });
   const volcano = new THREE.Mesh(coneGeom, coneMat);
@@ -94,8 +100,9 @@ export function createCity(scene) {
   dirLight.shadow.bias = -0.0004;
   dirLight.shadow.normalBias = 0.03;
   scene.add(dirLight);
+  scene.add(dirLight.target);
 
-  const ambient = new THREE.AmbientLight(0x403050, 0.35 * 0.35);
+  const ambient = new THREE.AmbientLight(0x504060, 0.6);
   scene.add(ambient);
 
   scene.fog = new THREE.FogExp2(0xD97A44, 0.0020);

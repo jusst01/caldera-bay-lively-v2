@@ -262,12 +262,14 @@ export function createPedestrians(scene, rng = Math.random) {
     debugSetPedsNear(px, pz, count = 5) {
       for (let i = 0; i < Math.min(count, peds.length); i++) {
         const p = peds[i];
-        const angle = ((i / count) - 0.5) * Math.PI * 0.8;
-        const dist = 6 + (i % 3) * 3;
+        // Place in front of player spread across view (5-15m)
+        const angle = ((i / count) - 0.5) * Math.PI * 0.5;
+        const dist = 5 + (i / count) * 10;
         p.x = px + Math.sin(angle) * dist;
         p.z = pz + Math.cos(angle) * dist;
         p.mesh.position.set(p.x, 0, p.z);
-        p.state = 'calm';
+        p.state = 'observing'; // Set to observing to stop them wandering
+        p.timer = 9999;
       }
     },
 

@@ -80,7 +80,7 @@ export function createScreens(ctx) {
             <div>NOBODY → RUNNER → WHEELMAN → <b>FIXER (${displaySave.rep} REP)</b> → BROKER → LEYENDA</div>
             <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0;">
             <div><b>JOBS DONE:</b> ${displaySave.missionIndex} / 8 Completed</div>
-            <div><b>CITY TAKEOVER:</b> ${Object.values(displaySave.takeover).filter(v => v > 0).length} / 5 Districts</div>
+            <div><b>CITY TAKEOVER:</b> ${Object.values(displaySave.takeover).filter(v => v > 50).length} / 5 Districts</div>
             <div><b>CARS STOLEN:</b> ${displaySave.stats.carsStolen} · <b>TOP SPEED:</b> ${displaySave.stats.topSpeed} KM/H</div>
           </div>
         </div>
@@ -188,12 +188,13 @@ export function createScreens(ctx) {
       previewScene.add(carMesh);
 
       function animatePreview() {
+        if (!activeScreen || activeScreen !== 'garage') return; // Stop if screen closed
         previewAnimId = requestAnimationFrame(animatePreview);
         carMesh.rotation.y += 0.01;
         previewRenderer.render(previewScene, previewCamera);
       }
       animatePreview();
-    }, 50);
+    }, 250); // Increased timeout to 250ms for better reliability
   }
 
   function renderSettingsScreen() {

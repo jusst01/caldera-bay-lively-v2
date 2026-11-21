@@ -107,10 +107,12 @@ function update(dt) {
     player.x = player.car.x;
     player.z = player.car.z;
     player.speed = player.car.speed || 0;
-    player.mesh.position.set(player.x, groundHeight(player.x, player.z), player.z);
-    player.mesh.rotation.y = player.car.heading;
+    player.mesh.visible = false;
   } else {
     player.speed = 0;
+    player.mesh.visible = true;
+    player.mesh.position.set(player.x, groundHeight(player.x, player.z), player.z);
+    player.mesh.rotation.y = player.heading;
   }
 
   traffic.update(dt, {x: player.x, z: player.z});
@@ -309,20 +311,34 @@ window.__calderaTest = {
   },
   stagePoliceAbeam(count = 3) {
     police.units = [];
+    // Positions relative to player's heading: e.g. (-7, -9), (7, -11), (0, -20)
+    const offsets = [
+      { x: -7, z: -9 },
+      { x: 7, z: -11 },
+      { x: 0, z: -20 }
+    ];
+
     for (let i = 0; i < count; i++) {
-      const offsetZ = 12 + i * 5;
-      const offsetX = (i - 1) * 3;
-      const x = player.x + Math.sin(player.heading) * offsetZ + Math.cos(player.heading) * offsetX;
-      const z = player.z + Math.cos(player.heading) * offsetZ - Math.sin(player.heading) * offsetX;
+      const offset = offsets[i] || { x: (i - 1) * 3, z: 12 + i * 5 };
+      const cosH = Math.cos(player.heading);
+      const sinH = Math.sin(player.heading);
+
+      // Rotate offsets based on player heading
+      const rx = offset.x * cosH + offset.z * sinH;
+      const rz = -offset.x * sinH + offset.z * cosH;
+
+      const x = player.x + rx;
+      const z = player.z + rz;
+
       const mesh = createCarMesh('fenix', 'full');
       mesh.position.set(x, 0, z);
+      mesh.rotation.y = player.heading; // Face same direction as player
       scene.add(mesh);
       police.units.push({
         id: 'P' + i,
-        name: ['PERALTA', 'GARCÍA', 'ROJAS', 'SILVA'][i],
+        name: ['PERALTA', 'GARCÍA', 'ROJAS', 'SILVA'][i % 4],
         mesh,
         x, z,
-        distance: Math.round(offsetZ),
         tactic: 'PURSUIT'
       });
     }

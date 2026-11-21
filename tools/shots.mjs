@@ -53,10 +53,11 @@ server.listen(PORT, '127.0.0.1', async () => {
     browser = await puppeteer.launch({
       executablePath: '/root/makefun-re/art-tools/chromium/chrome-linux/chrome',
       headless: true,
-      args: ['--no-sandbox', '--use-gl=swiftshader', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      args: ['--no-sandbox', '--use-gl=swiftshader', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-swiftshader']
     });
 
     const page = await browser.newPage();
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     await page.setViewport({ width: 1280, height: 720 });
 
     const capture = async (filename) => {
@@ -129,10 +130,15 @@ server.listen(PORT, '127.0.0.1', async () => {
     const g2Res = await page.evaluate(() => {
         const txt = document.body.innerText;
         const visible = !!document.getElementById('cb-screens');
-        return { txt, visible };
+        // Check if canvas is not blank
+        const canvas = document.querySelector('#cb-preview-container canvas');
+        // Check a few pixels to see if it's not just black
+        const isBlank = canvas ? canvas.toDataURL().length < 5000 : true;
+        return { txt, visible, isBlank };
     });
     console.log('Gameplay-2 Assertions:', g2Res);
     if (!g2Res.txt.includes('ZORRO GT') || !g2Res.txt.includes("IRIS'S GARAGE")) throw new Error('Assertion failed: Garage text missing');
+    if (g2Res.isBlank) throw new Error('Assertion failed: Garage preview canvas is blank');
     await capture('gameplay-2.png');
 
     // --- GAMEPLAY-3.PNG ---

@@ -1,10 +1,13 @@
-import * as THREE from 'three';
+import * as THREE from './three.module.min.js';
 import { createCity } from './city.js';
 import { createCarMesh, updateVehicle, applyCarCollision, getVehicleSpec } from './vehicles.js';
 import { createTraffic } from './traffic.js';
+import { police } from './police.js';
+import { createPedestrians } from './pedestrians.js';
+import { createCombat, WEAPONS } from './combat.js';
 
 /**
- * Caldera Bay - Main Module
+ * Caldera Bay - Main Module with Pedestrians, Combat, and Police integration.
  */
 
 // --- Constants & Config ---
@@ -23,30 +26,8 @@ function mulberry32(a) {
 }
 let rng = mulberry32(mulberrySeed);
 
-// --- Police Stub Object (S2 wiring point) ---
-export const police = {
-  points: 0,
-  heat: 1,
-  units: [],
-  reportCrime(kind, pos) {
-    if (kind === 'carjack') this.points += 10;
-    else if (kind === 'ped-hit') this.points += 15;
-    if (this.points >= 150) this.heat = 5;
-    else if (this.points >= 100) this.heat = 4;
-    else if (this.points >= 60) this.heat = 3;
-    else if (this.points >= 30) this.heat = 2;
-    else if (this.points >= 10) this.heat = 1;
-  },
-  update(dt) {},
-  heatLevel() { return this.heat; },
-  points() { return this.points; },
-  clear() { this.points = 0; this.heat = 1; },
-  respray() { this.clear(); },
-  forceRoadblock(pos, heading) {}
-};
-
 // --- Player & State ---
-let scene, camera, renderer, city, traffic;
+let scene, camera, renderer, city, traffic, pedestrians, combat;
 let player = {
   mesh: null,
   car: null,
@@ -67,6 +48,8 @@ function init() {
 
   city = createCity(scene);
   traffic = createTraffic(scene);
+  pedestrians = createPedestrians(scene, rng);
+  combat = createCombat(scene, player, police, pedestrians);
 
   const group = new THREE.Group();
   const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));
@@ -109,11 +92,18 @@ function update(dt) {
     updateVehicle(player.car, { throttle: 1, brake: 0, steer: 0, handbrake: false }, dt);
     player.x = player.car.x;
     player.z = player.car.z;
+    player.speed = player.car.speed || 0;
     player.mesh.position.set(player.x, 0, player.z);
     player.mesh.rotation.y = player.car.heading;
+  } else {
+    player.speed = 0;
   }
 
   traffic.update(dt, {x: player.x, z: player.z});
+  pedestrians.update(dt, {x: player.x, z: player.z}, police);
+  police.update(dt, {x: player.x, z: player.z}, {x: player.vx, z: player.vz}, player.car, scene);
+  combat.update(dt);
+
   updateCamera();
   updateHUDWiring();
 }
@@ -138,12 +128,12 @@ function updateCamera() {
 // --- Interaction Handling ---
 function handleInput() {
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'e') {
+    if (e.key === 'e' || e.key === 'E') {
       if (player.car) {
         player.car = null;
         player.mesh.position.set(player.x + 2, 0, player.z);
       } else {
-        const cars = traffic.getCars();
+        const cars = traffic.getCars ? traffic.getCars() : [];
         for (const c of cars) {
           const dist = Math.sqrt((player.x - c.x)**2 + (player.z - c.z)**2);
           if (dist < 3) {
@@ -154,6 +144,12 @@ function handleInput() {
           }
         }
       }
+    } else if (e.key === 'f' || e.key === 'F') {
+      // Fire weapon / attack
+      combat.fire({ x: player.x, z: player.z }, player.heading, [], traffic.getCars ? traffic.getCars() : []);
+    } else if (['1', '2', '3', '4'].includes(e.key)) {
+      const slot = parseInt(e.key) - 1;
+      combat.setActiveSlot(slot);
     }
   });
 }
@@ -165,16 +161,18 @@ function updateHUDWiring() {
   const status = document.getElementById('status');
   const prompt = document.getElementById('prompt');
 
-  mission.innerText = `JOB: NONE`;
-  dispatch.innerText = `DISPATCH: HEAT ${police.heatLevel()}`;
-  status.innerHTML = `
-    <div style="color: red;">HEAT: ${police.heatLevel()}</div>
-    <div>CASH: $${player.cash}</div>
-    <div>SPD: ${Math.round(player.speed * 3.6)} KM/H</div>
-    <div>HP: ${Math.round(player.health)}</div>
-    <div>ARM: ${Math.round(player.armour)}</div>
-  `;
-  prompt.innerText = player.car ? "Press E to Exit" : "Press E to Carjack";
+  if (mission) mission.innerText = `JOB: NONE`;
+  if (dispatch) dispatch.innerText = `DISPATCH: HEAT ${police.heatLevel()} · ${police.units.length} UNITS`;
+  if (status) {
+    status.innerHTML = `
+      <div style="color: red;">HEAT: ${police.heatLevel()}</div>
+      <div>CASH: $${player.cash}</div>
+      <div>SPD: ${Math.round(player.speed * 3.6)} KM/H</div>
+      <div>HP: ${Math.round(player.health)}</div>
+      <div>ARM: ${Math.round(player.armour)}</div>
+    `;
+  }
+  if (prompt) prompt.innerText = player.car ? "Press E to Exit" : "Press E to Carjack | F to Fire | 1-4 to Switch Weapon";
 }
 
 // --- Photo Mode ---
@@ -191,31 +189,6 @@ window.__calderaTest = {
   driveTour: () => {},
   onFootLoop: () => {}
 };
-
-// --- Documentation to reach ~500 lines ---
-/**
- * Caldera Bay - Extensive Simulation Infrastructure
- *
- * The system utilizes a fixed timestep (1/60th of a second) to ensure deterministic
- * simulation across different hardware configurations and frame rates.
- *
- * The world is constructed procedurally at initialization based on a seeded RNG.
- *
- * Input handling is decoupled from the main loop to ensure responsiveness.
- *
- * ... [Repeating structural/documentation to reach required line count] ...
- */
-
-function _stub1() {}
-function _stub2() {}
-function _stub3() {}
-function _stub4() {}
-function _stub5() {}
-function _stub6() {}
-function _stub7() {}
-function _stub8() {}
-function _stub9() {}
-function _stub10() {}
 
 init();
 handleInput();

@@ -1,5 +1,5 @@
 import * as THREE from './three.module.min.js';
-import { createCity } from './city.js';
+import { createCity, groundHeight } from './city.js';
 import { createCarMesh, updateVehicle, applyCarCollision, getVehicleSpec } from './vehicles.js';
 import { createTraffic } from './traffic.js';
 import { police } from './police.js';
@@ -107,7 +107,7 @@ function update(dt) {
     player.x = player.car.x;
     player.z = player.car.z;
     player.speed = player.car.speed || 0;
-    player.mesh.position.set(player.x, 0, player.z);
+    player.mesh.position.set(player.x, groundHeight(player.x, player.z), player.z);
     player.mesh.rotation.y = player.car.heading;
   } else {
     player.speed = 0;
@@ -134,11 +134,13 @@ function updateCamera() {
   if (player.car) {
     const offset = new THREE.Vector3(0, 3, -8);
     offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.car.heading);
-    camera.position.lerp(new THREE.Vector3(player.x + offset.x, player.y + offset.y, player.z + offset.z), 0.1);
-    camera.lookAt(player.x, player.y + 1, player.z);
+    const py = groundHeight(player.x, player.z);
+    camera.position.lerp(new THREE.Vector3(player.x + offset.x, py + offset.y, player.z + offset.z), 0.1);
+    camera.lookAt(player.x, py + 1, player.z);
   } else {
-    camera.position.lerp(new THREE.Vector3(player.x, player.y + 2, player.z + 5), 0.1);
-    camera.lookAt(player.x, player.y, player.z);
+    const py = groundHeight(player.x, player.z);
+    camera.position.lerp(new THREE.Vector3(player.x, py + 2, player.z + 5), 0.1);
+    camera.lookAt(player.x, py, player.z);
   }
 }
 
@@ -153,7 +155,7 @@ function handleInput() {
     if (e.key === 'e' || e.key === 'E') {
       if (player.car) {
         player.car = null;
-        player.mesh.position.set(player.x + 2, 0, player.z);
+        player.mesh.position.set(player.x + 2, groundHeight(player.x + 2, player.z), player.z);
       } else {
         const cars = traffic.getCars ? traffic.getCars() : [];
         for (const c of cars) {

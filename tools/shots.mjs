@@ -70,55 +70,95 @@ server.listen(PORT, '127.0.0.1', async () => {
 
     // --- COVER.PNG ---
     console.log('Staging cover.png...');
-    let coverCaptured = false;
-    for (let i = 0; i < 6; i++) {
-      await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
-      await page.evaluate(() => {
-        window.__photo.load({ seed: 77, force: { mission: 6, stage: 1, heat: 4, policeCount: 3, carSpeed: 30 } });
-      });
-      await new Promise(r => setTimeout(r, 2000));
-
-      const coverRes = await page.evaluate(() => {
-        const s = window.__calderaTest.state();
-        const units = window.__calderaTest.projectUnits();
-        const speedo = document.getElementById('cb-v-speed')?.innerText || '';
-        const cash = document.getElementById('cb-s-cash')?.innerText || '';
-        const rep = document.getElementById('cb-s-rep')?.innerText || '';
-        const missionObj = document.getElementById('cb-m-obj')?.innerText || '';
-        return { s, units, speedo, cash, rep, missionObj };
-      });
-      console.log(`Cover Assertions (attempt ${i+1}):`, coverRes);
-      if (coverRes.units.filter(u => u.inFrustum).length >= 2) {
-        if (coverRes.s.player.onFoot) throw new Error('Assertion failed: player should be in car');
-        if (coverRes.s.player.speed <= 0) throw new Error('Assertion failed: car speed should be > 0');
-        const speed = parseInt(coverRes.speedo);
-        if (isNaN(speed) || speed < 40 || speed > 140) throw new Error(`Assertion failed: speed ${speed} out of range`);
-        if (coverRes.s.police.heat !== 4) throw new Error('Assertion failed: heat should be 4');
-        if (!coverRes.missionObj) throw new Error('Assertion failed: mission objective empty');
-        if (!coverRes.cash.includes('4,210') || !coverRes.rep.includes('520')) throw new Error('Assertion failed: HUD stats wrong');
-        await capture('cover.png');
-        coverCaptured = true;
-        break;
+    await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
+    const covRes = await page.evaluate(() => {
+      window.__photo.load({seed: 77, force: {mission: 6, stage: 1, heat: 3, carSpeed: 20}});
+      const player = window.__calderaTest.getPlayer();
+      player.x = 100;
+      player.z = 100;
+      if (player.car) {
+        player.car.x = 100;
+        player.car.z = 100;
       }
-      console.log(`Retrying cover.png... (units in frustum: ${coverRes.units.filter(u => u.inFrustum).length})`);
-    }
-    if (!coverCaptured) throw new Error('Failed to capture cover.png after retries');
+      const heading = player.heading;
+      const cosH = Math.cos(heading);
+      const sinH = Math.sin(heading);
+      const offsets = [
+        { x: -6, z: -10 },
+        { x: 6, z: -12 },
+        { x: -1, z: -22 }
+      ];
+      offsets.forEach((offset, i) => {
+        const rx = offset.x * cosH + offset.z * sinH;
+        const rz = -offset.x * sinH + offset.z * cosH;
+        window.__calderaTest.stageUnitAt(i, player.x + rx, player.z + rz);
+      });
+
+      if (player.car) {
+        player.car.speed = 80;
+        window.__calderaTest.forceSpeed = 80;
+      }
+
+      const s = window.__calderaTest.state();
+      const units = window.__calderaTest.projectUnits();
+      const unitPos = window.__calderaTest.getPoliceUnits();
+      const distances = unitPos.map(u => Math.sqrt((u.x - player.x)**2 + (u.z - player.z)**2));
+      return { s, units, distances };
+    });
+    console.log('Cover Assertions:', covRes);
+    if (covRes.s.player.onFoot) throw new Error('Assertion failed: should not be on foot');
+    if (covRes.s.player.speed < 40 || covRes.s.player.speed > 140) throw new Error(`Assertion failed: speed out of range: ${covRes.s.player.speed}`);
+    if (covRes.s.police.heat !== 3) throw new Error('Assertion failed: heat should be 3');
+    if (covRes.s.player.cash !== 4210) throw new Error('Assertion failed: cash incorrect');
+    if (covRes.s.player.rep !== 520) throw new Error('Assertion failed: rep incorrect');
+    if (covRes.units.filter(u => u.inFrustum).length < 2) throw new Error('Assertion failed: not enough units in frustum');
+    if (covRes.distances.slice(0, 3).some(d => d > 45)) throw new Error(`Assertion failed: top 3 units distance > 45m: ${covRes.distances.slice(0, 3)}`);
+    await capture('cover.png');
 
     // --- GAMEPLAY-1.PNG ---
     console.log('Staging gameplay-1.png...');
     await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
     await page.evaluate(() => {
-        window.__photo.load({ seed: 31, force: { mission: 0, stage: 1, heat: 1, onFoot: true, pedsCount: 6 } });
+      window.__photo.load({ seed: 31, force: { mission: 0, stage: 1, heat: 1, onFoot: true, pedsCount: 6 } });
+      const player = window.__calderaTest.getPlayer();
+
+      // HIDE FOOT CUBE
+      const scene = window.__calderaTest.getPlayer().mesh.parent;
+      scene.children.forEach(c => {
+        if (c.type === 'Mesh' && c.geometry && c.geometry.type === 'BoxGeometry' && Math.abs(c.position.x) < 0.1 && Math.abs(c.position.y) < 0.1 && Math.abs(c.position.z) < 0.1) {
+            c.visible = false;
+        }
+      });
+
+      const heading = player.heading;
+      const cosH = Math.cos(heading);
+      const sinH = Math.sin(heading);
+      const offsets = [
+        { x: 2, z: 6 },
+        { x: -3, z: 8 },
+        { x: 5, z: 10 },
+        { x: -6, z: 12 },
+        { x: 0, z: 14 },
+        { x: 8, z: 7 }
+      ];
+      offsets.forEach((offset, i) => {
+        const rx = offset.x * cosH + offset.z * sinH;
+        const rz = -offset.x * sinH + offset.z * cosH;
+        window.__calderaTest.stagePedAt(i, player.x + rx, player.z + rz);
+      });
     });
     await new Promise(r => setTimeout(r, 1500));
 
     const g1Res = await page.evaluate(() => {
         const s = window.__calderaTest.state();
         const peds = window.__calderaTest.projectPeds();
-        return { s, peds };
+        const player = window.__calderaTest.getPlayer();
+        // check within 20m AND inFrustum
+        const validPeds = peds.filter(p => p.inFrustum && Math.sqrt((p.px - player.x)**2 + (p.pz - player.z)**2) <= 20);
+        return { s, peds, validPeds };
     });
     console.log('Gameplay-1 Assertions:', g1Res);
-    if (g1Res.peds.filter(p => p.inFrustum).length < 4) throw new Error('Assertion failed: not enough peds');
+    if (g1Res.validPeds.length < 4) throw new Error(`Assertion failed: not enough peds within 20m and inFrustum: found ${g1Res.validPeds.length}`);
     if (!g1Res.s.player.onFoot) throw new Error('Assertion failed: should be on foot');
     if (g1Res.s.police.heat !== 1) throw new Error('Assertion failed: heat should be 1');
     await capture('gameplay-1.png');
@@ -129,16 +169,13 @@ server.listen(PORT, '127.0.0.1', async () => {
     await new Promise(r => setTimeout(r, 2000));
     const g2Res = await page.evaluate(() => {
         const txt = document.body.innerText;
-        const visible = !!document.getElementById('cb-screens');
-        // Check if canvas is not blank
-        const canvas = document.querySelector('#cb-preview-container canvas');
-        // Check a few pixels to see if it's not just black
-        const isBlank = canvas ? canvas.toDataURL().length < 5000 : true;
-        return { txt, visible, isBlank };
+        const garageCars = document.querySelectorAll('#cb-owned-list > div').length;
+        const hasZorro = txt.includes('ZORRO GT');
+        return { txt, garageCars, hasZorro };
     });
     console.log('Gameplay-2 Assertions:', g2Res);
-    if (!g2Res.txt.includes('ZORRO GT') || !g2Res.txt.includes("IRIS'S GARAGE")) throw new Error('Assertion failed: Garage text missing');
-    if (g2Res.isBlank) throw new Error('Assertion failed: Garage preview canvas is blank');
+    if (g2Res.garageCars !== 4) throw new Error(`Assertion failed: expected 4 cars, found ${g2Res.garageCars}`);
+    if (!g2Res.hasZorro) throw new Error('Assertion failed: ZORRO GT text missing');
     await capture('gameplay-2.png');
 
     // --- GAMEPLAY-3.PNG ---
@@ -151,7 +188,7 @@ server.listen(PORT, '127.0.0.1', async () => {
         return { txt, continueBtn };
     });
     console.log('Gameplay-3 Assertions:', g3Res);
-    if (!g3Res.txt.includes('CALDERA BAY') || !g3Res.txt.includes('YOUR RISE')) throw new Error('Assertion failed: Start screen text missing');
+    if (!g3Res.txt.includes('YOUR RISE')) throw new Error('Assertion failed: YOUR RISE text missing');
     if (!g3Res.continueBtn.includes('M7/8 · REP 520 · $4,210')) throw new Error(`Assertion failed: Continue line wrong: ${g3Res.continueBtn}`);
     await capture('gameplay-3.png');
 

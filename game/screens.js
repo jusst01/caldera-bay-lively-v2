@@ -187,6 +187,8 @@ export function createScreens(ctx) {
       const carMesh = createCarMesh('zorro-gt', 'full');
       previewScene.add(carMesh);
 
+      previewRenderer.render(previewScene, previewCamera); // Added immediate render
+
       function animatePreview() {
         if (!activeScreen || activeScreen !== 'garage') return; // Stop if screen closed
         previewAnimId = requestAnimationFrame(animatePreview);

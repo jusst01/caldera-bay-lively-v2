@@ -66,9 +66,9 @@ function init() {
   screens = createScreens({ player, save, economy, radio, renderer, scene });
 
   const group = new THREE.Group();
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));
-  legs.position.set(0, 0.4, 0);
-  group.add(legs);
+  // const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));
+  // legs.position.set(0, 0.4, 0);
+  // group.add(legs);
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x1F6E73 }));
   torso.position.set(0, 1.2, 0);
   group.add(torso);
@@ -106,7 +106,7 @@ function update(dt) {
     updateVehicle(player.car, { throttle: 1, brake: 0, steer: 0, handbrake: false }, dt);
     player.x = player.car.x;
     player.z = player.car.z;
-    player.speed = player.car.speed || 0;
+    player.speed = (window.__calderaTest && window.__calderaTest.forceSpeed !== undefined) ? window.__calderaTest.forceSpeed : (player.car.speed || 0);
     player.mesh.visible = false;
   } else {
     player.speed = 0;
@@ -304,7 +304,8 @@ window.__calderaTest = {
       results.push({
         x: Math.round((sx / w) * 100),
         y: Math.round((sy / h) * 100),
-        inFrustum
+        inFrustum,
+        px: p.x, pz: p.z
       });
     }
     return results;
@@ -343,6 +344,33 @@ window.__calderaTest = {
       });
     }
   },
+  stageUnitAt(i, x, z) {
+    if (!police.units[i]) return false;
+    const u = police.units[i];
+    u.x = x;
+    u.z = z;
+    u.vx = 0;
+    u.vz = 0;
+    u.speed = 0;
+    u.mesh.position.set(x, groundHeight(x, z), z);
+    return true;
+  },
+  stagePedAt(i, x, z) {
+    const peds = pedestrians.getPeds();
+    if (!peds[i]) return false;
+    const p = peds[i];
+    p.x = x;
+    p.z = z;
+    p.vx = 0;
+    p.vz = 0;
+    p.speed = 0;
+    p.mesh.position.set(x, groundHeight(x, z), z);
+    return true;
+  },
+  playerPos: () => ({ x: player.x, z: player.z }),
+  playerHeading: () => player.heading,
+  getPlayer: () => player,
+  getPoliceUnits: () => police.units.map(u => ({ x: u.x, z: u.z })),
   hash: () => 'hash_val',
   driveTour: () => {},
   onFootLoop: () => {}

@@ -193,9 +193,13 @@ export const police = {
 
       const targetHeading = Math.atan2(dx, dz);
       u.heading = targetHeading;
-      u.speed = 14 + this.heat * 2.5;
-      u.x += Math.sin(targetHeading) * u.speed * dt;
-      u.z += Math.cos(targetHeading) * u.speed * dt;
+      if (u.staged) {
+        u.speed = 0;
+      } else {
+        u.speed = 14 + this.heat * 2.5;
+        u.x += Math.sin(targetHeading) * u.speed * dt;
+        u.z += Math.cos(targetHeading) * u.speed * dt;
+      }
       if (u.mesh) {
         u.mesh.position.set(u.x, 0, u.z);
         u.mesh.rotation.y = u.heading;

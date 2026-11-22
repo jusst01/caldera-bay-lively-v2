@@ -3,7 +3,7 @@ import { createReadStream, statSync, writeFileSync } from 'node:fs';
 import { resolve, join, extname, normalize, sep } from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const puppeteer = require('/root/makefun-gta6-v2-ceremony/node_modules/puppeteer-core');
+const puppeteer = (await import('/root/makefun-gta6-v2-ceremony/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js')).default;
 
 const root = resolve(resolve('.'), 'game');
 const PORT = 8089;
@@ -60,104 +60,158 @@ server.listen(PORT, '127.0.0.1', async () => {
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     await page.setViewport({ width: 1280, height: 720 });
 
+    const capturedHashes = new Set();
     const capture = async (filename) => {
       const buf = await page.screenshot({ type: 'png', encoding: 'binary' });
       if (buf.length > 262144) throw new Error(`${filename} too large: ${buf.length}`);
       if (buf.length <= 15000) throw new Error(`${filename} too small: ${buf.length}`);
+      const hash = require('node:crypto').createHash('sha256').update(buf).digest('hex');
+      if (capturedHashes.has(hash)) throw new Error(`${filename} has duplicate sha256 hash: ${hash}`);
+      capturedHashes.add(hash);
       writeFileSync(`screenshots/${filename}`, buf);
-      console.log(`Saved ${filename} (${buf.length} bytes, sha256: ${require('node:crypto').createHash('sha256').update(buf).digest('hex')})`);
+      console.log(`Saved ${filename} (${buf.length} bytes, sha256: ${hash})`);
     };
 
     // --- COVER.PNG ---
     console.log('Staging cover.png...');
     await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
-    const covRes = await page.evaluate(() => {
-      window.__photo.load({seed: 77, force: {mission: 6, stage: 1, heat: 3, carSpeed: 20}});
+    await page.evaluate(() => {
+      window.__photo.load({seed: 77, force: {mission: 6, stage: 1, heat: 4, carSpeed: 25, policeCount: 7}});
       const player = window.__calderaTest.getPlayer();
       player.x = 100;
       player.z = 100;
       if (player.car) {
         player.car.x = 100;
         player.car.z = 100;
+        player.x = 100;
+        player.z = 100;
       }
-      const heading = player.heading;
-      const cosH = Math.cos(heading);
-      const sinH = Math.sin(heading);
-      const offsets = [
-        { x: -6, z: -10 },
-        { x: 6, z: -12 },
-        { x: -1, z: -22 }
-      ];
-      offsets.forEach((offset, i) => {
-        const rx = offset.x * cosH + offset.z * sinH;
-        const rz = -offset.x * sinH + offset.z * cosH;
-        window.__calderaTest.stageUnitAt(i, player.x + rx, player.z + rz);
-      });
-
-      if (player.car) {
-        player.car.speed = 80;
-        window.__calderaTest.forceSpeed = 80;
-      }
-
-      const s = window.__calderaTest.state();
-      const units = window.__calderaTest.projectUnits();
-      const unitPos = window.__calderaTest.getPoliceUnits();
-      const distances = unitPos.map(u => Math.sqrt((u.x - player.x)**2 + (u.z - player.z)**2));
-      return { s, units, distances };
     });
+
+    // Forward-calibration step: stage unit 0 at player-relative (0,-15) under 4 candidate rotations (0/90/180/270 deg)
+    let bestRot = 0;
+    const candidates = [0, Math.PI/2, Math.PI, 1.5 * Math.PI];
+
+    for (const rot of candidates) {
+        const found = await page.evaluate((rot) => {
+            const player = window.__calderaTest.getPlayer();
+            const cosH = Math.cos(player.heading + rot);
+            const sinH = Math.sin(player.heading + rot);
+            const offsets = [
+                { x: 0, z: -15 },
+                { x: -6, z: -10 },
+                { x: 6, z: -12 },
+                { x: -1, z: -22 }
+            ];
+            offsets.forEach((offset, i) => {
+                const rx = offset.x * cosH + offset.z * sinH;
+                const rz = -offset.x * sinH + offset.z * cosH;
+                window.__calderaTest.stageUnitAt(i, player.x + rx, player.z + rz);
+            });
+
+            const projected = window.__calderaTest.projectUnits();
+            const unit = projected.find(u => u.id === 'P0');
+            return unit && unit.inFrustum && unit.x >= 35 && unit.x <= 65;
+        }, rot);
+
+        if (found) {
+            bestRot = rot;
+            console.log('DEBUG: Found bestRot:', bestRot);
+            break;
+        }
+        await new Promise(r => setTimeout(r, 68)); // ~2 frames apart
+    }
+    console.log('DEBUG: Final bestRot:', bestRot);
+
+    const covRes = await page.evaluate((bestRot) => {
+        const player = window.__calderaTest.getPlayer();
+        const playerHeading = player.heading;
+        const offsets = [
+            { x: 0, z: -15 },  // Unit 0
+            { x: -6, z: -10 }, // Unit 1
+            { x: 6, z: -12 },  // Unit 2
+            { x: -1, z: -22 }  // Unit 3
+        ];
+
+        offsets.forEach((offset, i) => {
+            const cosH = Math.cos(playerHeading + bestRot);
+            const sinH = Math.sin(playerHeading + bestRot);
+            const rx = offset.x * cosH + offset.z * sinH;
+            const rz = -offset.x * sinH + offset.z * cosH;
+            window.__calderaTest.stageUnitAt(i, player.x + rx, player.z + rz);
+        });
+
+        for (let i = 4; i < 7; i++) {
+            window.__calderaTest.stageUnitAt(i, player.x + 1000, player.z + 1000);
+        }
+
+        if (player.car) {
+            player.car.speed = 25; // 90 KM/H
+            window.__calderaTest.forceSpeed = 25;
+        }
+
+        const s = window.__calderaTest.state();
+        const units = window.__calderaTest.projectUnits();
+        const dispatchText = document.getElementById('cb-d-units')?.innerText || '';
+        return { s, units, dispatchText };
+    }, bestRot);
+
     console.log('Cover Assertions:', covRes);
     if (covRes.s.player.onFoot) throw new Error('Assertion failed: should not be on foot');
-    if (covRes.s.player.speed < 40 || covRes.s.player.speed > 140) throw new Error(`Assertion failed: speed out of range: ${covRes.s.player.speed}`);
-    if (covRes.s.police.heat !== 3) throw new Error('Assertion failed: heat should be 3');
+    const carSpeedKmh = Math.round(Math.abs(covRes.s.player.car.speed) * 3.6);
+    if (carSpeedKmh < 40 || carSpeedKmh > 140) throw new Error(`Assertion failed: car speed out of range: ${carSpeedKmh}`);
+    if (covRes.s.police.heat !== 4) throw new Error('Assertion failed: heat should be 4');
     if (covRes.s.player.cash !== 4210) throw new Error('Assertion failed: cash incorrect');
     if (covRes.s.player.rep !== 520) throw new Error('Assertion failed: rep incorrect');
-    if (covRes.units.filter(u => u.inFrustum).length < 2) throw new Error('Assertion failed: not enough units in frustum');
-    if (covRes.distances.slice(0, 3).some(d => d > 45)) throw new Error(`Assertion failed: top 3 units distance > 45m: ${covRes.distances.slice(0, 3)}`);
+
+    const validUnitsInFrustum = covRes.units.filter(u => u.inFrustum && u.x >= 10 && u.x <= 90 && u.y >= 15 && u.y <= 85);
+    if (validUnitsInFrustum.length < 2) throw new Error(`Assertion failed: not enough staged units in frustum: ${validUnitsInFrustum.length}`);
+
+    const distMatches = [...covRes.dispatchText.matchAll(/·\s*(\d+)m\s*·/g)].map(m => parseInt(m[1]));
+    console.log('Parsed top dispatch distances:', distMatches.slice(0, 3));
+    if (distMatches.slice(0, 3).some(d => d > 45)) throw new Error(`Assertion failed: top 3 dispatch distances > 45m: ${distMatches}`);
+
+    await new Promise(r => setTimeout(r, 50)); // screenshot within ~3 frames
     await capture('cover.png');
 
     // --- GAMEPLAY-1.PNG ---
     console.log('Staging gameplay-1.png...');
     await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
-    await page.evaluate(() => {
+    await page.evaluate((bestRot) => {
       window.__photo.load({ seed: 31, force: { mission: 0, stage: 1, heat: 1, onFoot: true, pedsCount: 6 } });
       const player = window.__calderaTest.getPlayer();
 
-      // HIDE FOOT CUBE
-      const scene = window.__calderaTest.getPlayer().mesh.parent;
-      scene.children.forEach(c => {
-        if (c.type === 'Mesh' && c.geometry && c.geometry.type === 'BoxGeometry' && Math.abs(c.position.x) < 0.1 && Math.abs(c.position.y) < 0.1 && Math.abs(c.position.z) < 0.1) {
-            c.visible = false;
-        }
-      });
-
-      const heading = player.heading;
+      const heading = player.heading + bestRot;
       const cosH = Math.cos(heading);
       const sinH = Math.sin(heading);
       const offsets = [
-        { x: 2, z: 6 },
-        { x: -3, z: 8 },
-        { x: 5, z: 10 },
-        { x: -6, z: 12 },
-        { x: 0, z: 14 },
-        { x: 8, z: 7 }
+        { x: 0, z: -5 },
+        { x: -2, z: -7 },
+        { x: 2, z: -8 },
+        { x: -1, z: -10 },
+        { x: 1, z: -12 },
+        { x: 0, z: -15 }
       ];
       offsets.forEach((offset, i) => {
         const rx = offset.x * cosH + offset.z * sinH;
         const rz = -offset.x * sinH + offset.z * cosH;
         window.__calderaTest.stagePedAt(i, player.x + rx, player.z + rz);
       });
-    });
+    }, bestRot);
     await new Promise(r => setTimeout(r, 1500));
 
     const g1Res = await page.evaluate(() => {
         const s = window.__calderaTest.state();
         const peds = window.__calderaTest.projectPeds();
         const player = window.__calderaTest.getPlayer();
-        // check within 20m AND inFrustum
         const validPeds = peds.filter(p => p.inFrustum && Math.sqrt((p.px - player.x)**2 + (p.pz - player.z)**2) <= 20);
         return { s, peds, validPeds };
     });
     console.log('Gameplay-1 Assertions:', g1Res);
+    g1Res.peds.forEach((p, i) => {
+        const dist = Math.sqrt((p.px - g1Res.s.player.x)**2 + (p.pz - g1Res.s.player.z)**2);
+        console.log(`Ped ${i}: dist=${dist.toFixed(1)}m, inFrustum=${p.inFrustum}, x=${p.x}%, y=${p.y}%`);
+    });
     if (g1Res.validPeds.length < 4) throw new Error(`Assertion failed: not enough peds within 20m and inFrustum: found ${g1Res.validPeds.length}`);
     if (!g1Res.s.player.onFoot) throw new Error('Assertion failed: should be on foot');
     if (g1Res.s.police.heat !== 1) throw new Error('Assertion failed: heat should be 1');
@@ -166,7 +220,38 @@ server.listen(PORT, '127.0.0.1', async () => {
     // --- GAMEPLAY-2.PNG ---
     console.log('Staging gameplay-2.png...');
     await page.goto(`http://127.0.0.1:${PORT}/index.html?shot=end&seed=12`, { waitUntil: 'load' });
-    await new Promise(r => setTimeout(r, 2000));
+
+    // Poll for non-blank preview canvas (timeout ~10s, fail if black)
+    const startTime = Date.now();
+    let isNonBlank = false;
+    while (Date.now() - startTime < 10000) {
+        isNonBlank = await page.evaluate(() => {
+            const canvas = document.querySelector('#cb-preview-container canvas');
+            if (!canvas) return false;
+            const off = document.createElement('canvas');
+            off.width = canvas.width || 300;
+            off.height = canvas.height || 300;
+            const octx = off.getContext('2d');
+            try {
+                octx.drawImage(canvas, 0, 0);
+                const imgData = octx.getImageData(0, 0, off.width, off.height);
+                const data = imgData.data;
+                let nonZero = 0;
+                for (let i = 3; i < data.length; i += 4) {
+                    if (data[i] > 10 || data[i-1] > 10 || data[i-2] > 10) {
+                        nonZero++;
+                    }
+                }
+                return nonZero > (off.width * off.height * 0.01);
+            } catch (e) {
+                return false;
+            }
+        });
+        if (isNonBlank) break;
+        await new Promise(r => setTimeout(r, 200));
+    }
+    if (!isNonBlank) throw new Error('Assertion failed: preview canvas is blank (black)');
+
     const g2Res = await page.evaluate(() => {
         const txt = document.body.innerText;
         const garageCars = document.querySelectorAll('#cb-owned-list > div').length;
@@ -185,11 +270,13 @@ server.listen(PORT, '127.0.0.1', async () => {
     const g3Res = await page.evaluate(() => {
         const txt = document.body.innerText;
         const continueBtn = document.getElementById('cb-btn-continue')?.innerText || '';
-        return { txt, continueBtn };
+        const takeoverEl = document.getElementById('cb-t-num')?.innerText || '';
+        return { txt, continueBtn, takeoverEl };
     });
     console.log('Gameplay-3 Assertions:', g3Res);
     if (!g3Res.txt.includes('YOUR RISE')) throw new Error('Assertion failed: YOUR RISE text missing');
     if (!g3Res.continueBtn.includes('M7/8 · REP 520 · $4,210')) throw new Error(`Assertion failed: Continue line wrong: ${g3Res.continueBtn}`);
+    if (!g3Res.txt.includes('3/5')) throw new Error(`Assertion failed: takeover 3/5 missing: ${g3Res.txt}`);
     await capture('gameplay-3.png');
 
     console.log('ALL SHOTS CAPTURED SUCCESSFULLY!');

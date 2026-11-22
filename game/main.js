@@ -66,9 +66,6 @@ function init() {
   screens = createScreens({ player, save, economy, radio, renderer, scene });
 
   const group = new THREE.Group();
-  // const legs = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), new THREE.MeshStandardMaterial({ color: 0x2A2A32 }));
-  // legs.position.set(0, 0.4, 0);
-  // group.add(legs);
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x1F6E73 }));
   torso.position.set(0, 1.2, 0);
   group.add(torso);
@@ -312,11 +309,14 @@ window.__calderaTest = {
   },
   stagePoliceAbeam(count = 3) {
     police.units = [];
-    // Positions relative to player's heading: e.g. (-7, -9), (7, -11), (0, -20)
     const offsets = [
-      { x: -7, z: -9 },
-      { x: 7, z: -11 },
-      { x: 0, z: -20 }
+      { x: 0, z: -15 },
+      { x: -6, z: -10 },
+      { x: 6, z: -12 },
+      { x: -1, z: -22 },
+      { x: 10, z: 20 },
+      { x: -10, z: 20 },
+      { x: 0, z: 30 }
     ];
 
     for (let i = 0; i < count; i++) {
@@ -332,12 +332,12 @@ window.__calderaTest = {
       const z = player.z + rz;
 
       const mesh = createCarMesh('fenix', 'full');
-      mesh.position.set(x, 0, z);
+      mesh.position.set(x, groundHeight(x, z), z);
       mesh.rotation.y = player.heading; // Face same direction as player
       scene.add(mesh);
       police.units.push({
         id: 'P' + i,
-        name: ['PERALTA', 'GARCÍA', 'ROJAS', 'SILVA'][i % 4],
+        name: ['PERALTA', 'GARCÍA', 'ROJAS', 'SILVA', 'SANTIAGO', 'JIMÉNEZ', 'MORALES'][i % 7],
         mesh,
         x, z,
         tactic: 'PURSUIT'
@@ -352,6 +352,10 @@ window.__calderaTest = {
     u.vx = 0;
     u.vz = 0;
     u.speed = 0;
+    u.staged = true;
+    const px = player.car ? player.car.x : player.x;
+    const pz = player.car ? player.car.z : player.z;
+    u.distance = Math.round(Math.sqrt((x - px)**2 + (z - pz)**2));
     u.mesh.position.set(x, groundHeight(x, z), z);
     return true;
   },

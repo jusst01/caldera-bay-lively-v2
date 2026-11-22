@@ -174,7 +174,7 @@ export function createScreens(ctx) {
       previewCamera.position.set(0, 2.5, 6);
       previewCamera.lookAt(0, 0.5, 0);
 
-      previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
       previewRenderer.setSize(width, height);
       container.appendChild(previewRenderer.domElement);
 

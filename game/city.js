@@ -144,6 +144,16 @@ export function createCity(scene) {
   const meshBlock = new THREE.InstancedMesh(facadeGeom, facadeMat, 200);
   const meshWarehouse = new THREE.InstancedMesh(facadeGeom, facadeMat, 200);
   const meshVilla = new THREE.InstancedMesh(facadeGeom, facadeMat, 174);
+
+  // Hide all initially
+  const hiddenMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (let i = 0; i < 200; i++) {
+    meshShop.setMatrixAt(i, hiddenMatrix);
+    meshBlock.setMatrixAt(i, hiddenMatrix);
+    meshWarehouse.setMatrixAt(i, hiddenMatrix);
+    if (i < 174) meshVilla.setMatrixAt(i, hiddenMatrix);
+  }
+
   scene.add(meshShop, meshBlock, meshWarehouse, meshVilla);
 
   // --- Population ---

@@ -76,17 +76,25 @@ server.listen(PORT, '127.0.0.1', async () => {
     console.log('Staging cover.png...');
     await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
     await page.evaluate(() => {
-      window.__photo.load({seed: 77, force: {mission: 6, stage: 1, heat: 4, carSpeed: 25, policeCount: 7}});
+      window.__photo.load({seed: 77, force: {mission: 6, stage: 1, heat: 4, carSpeed: 20, policeCount: 7}});
       const player = window.__calderaTest.getPlayer();
-      player.x = 100;
-      player.z = 100;
+      player.x = 0;
+      player.z = 12;
+      player.heading = Math.PI;
       if (player.car) {
-        player.car.x = 100;
-        player.car.z = 100;
-        player.x = 100;
-        player.z = 100;
+        player.car.x = 0;
+        player.car.z = 12;
+        player.car.heading = Math.PI;
+        player.car.speed = 20;
+        if (player.car.mesh) {
+          player.car.mesh.position.set(0, 0, 12);
+          player.car.mesh.rotation.y = Math.PI;
+        }
       }
     });
+
+    // Let ~30 frames run so the chase camera settles behind the car at the intersection
+    await new Promise(r => setTimeout(r, 500));
 
     // Forward-calibration step: stage unit 0 at player-relative (0,-15) under 4 candidate rotations (0/90/180/270 deg)
     let bestRot = 0;
@@ -152,8 +160,9 @@ server.listen(PORT, '127.0.0.1', async () => {
 
         const s = window.__calderaTest.state();
         const units = window.__calderaTest.projectUnits();
+        const carProj = window.__calderaTest.projectCar ? window.__calderaTest.projectCar() : null;
         const dispatchText = document.getElementById('cb-d-units')?.innerText || '';
-        return { s, units, dispatchText };
+        return { s, units, carProj, dispatchText };
     }, bestRot);
 
     console.log('Cover Assertions:', covRes);
@@ -163,9 +172,16 @@ server.listen(PORT, '127.0.0.1', async () => {
     if (covRes.s.police.heat !== 4) throw new Error('Assertion failed: heat should be 4');
     if (covRes.s.player.cash !== 4210) throw new Error('Assertion failed: cash incorrect');
     if (covRes.s.player.rep !== 520) throw new Error('Assertion failed: rep incorrect');
+    if (covRes.s.mission.jobLabel !== 'The Long Haul' || covRes.s.mission.stageLabel !== 'Stage 1') {
+        throw new Error(`Assertion failed: mission incorrect: ${JSON.stringify(covRes.s.mission)}`);
+    }
 
-    const validUnitsInFrustum = covRes.units.filter(u => u.inFrustum && u.x >= 10 && u.x <= 90 && u.y >= 15 && u.y <= 85);
+    const validUnitsInFrustum = covRes.units.filter(u => u.inFrustum && u.x >= 15 && u.x <= 85 && u.y >= 15 && u.y <= 85);
     if (validUnitsInFrustum.length < 2) throw new Error(`Assertion failed: not enough staged units in frustum: ${validUnitsInFrustum.length}`);
+
+    if (!covRes.carProj || !covRes.carProj.inFrustum || covRes.carProj.x < 30 || covRes.carProj.x > 70 || covRes.carProj.y < 35 || covRes.carProj.y > 80) {
+        throw new Error(`Assertion failed: projectCar() not in range [30-70%, 35-80%]: ${JSON.stringify(covRes.carProj)}`);
+    }
 
     const distMatches = [...covRes.dispatchText.matchAll(/·\s*(\d+)m\s*·/g)].map(m => parseInt(m[1]));
     console.log('Parsed top dispatch distances:', distMatches.slice(0, 3));
@@ -173,6 +189,13 @@ server.listen(PORT, '127.0.0.1', async () => {
 
     await new Promise(r => setTimeout(r, 50)); // screenshot within ~3 frames
     await capture('cover.png');
+
+    if (process.argv[2] === 'cover') {
+        console.log('COVER SHOT ONLY COMPLETED SUCCESSFULLY!');
+        await browser.close();
+        server.close();
+        process.exit(0);
+    }
 
     // --- GAMEPLAY-1.PNG ---
     console.log('Staging gameplay-1.png...');

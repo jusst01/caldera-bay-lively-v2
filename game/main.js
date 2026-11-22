@@ -286,6 +286,23 @@ window.__calderaTest = {
     }
     return results;
   },
+  projectCar() {
+    camera.updateMatrixWorld();
+    if (!player.car || !player.car.mesh) return null;
+    const w = renderer.domElement.width || window.innerWidth;
+    const h = renderer.domElement.height || window.innerHeight;
+    const v = new THREE.Vector3();
+    player.car.mesh.getWorldPosition(v);
+    v.project(camera);
+    const sx = (v.x * 0.5 + 0.5) * w;
+    const sy = (-(v.y * 0.5) + 0.5) * h;
+    const inFrustum = v.z >= -1 && v.z <= 1 && sx >= 0 && sx <= w && sy >= 0 && sy <= h;
+    return {
+      x: Math.round((sx / w) * 100),
+      y: Math.round((sy / h) * 100),
+      inFrustum
+    };
+  },
   projectPeds() {
     camera.updateMatrixWorld();
     const results = [];
